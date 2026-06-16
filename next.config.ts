@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: 'export',          // 导出纯静态文件
-  images: { unoptimized: true }, // 禁用图片优化（静态导出必须）
+  // 删除 output: 'export'，让 Next.js 使用默认 SSR 模式
+  // 删除 images: { unoptimized: true }，Netlify 插件会处理图片优化
 }
 
 module.exports = nextConfig
