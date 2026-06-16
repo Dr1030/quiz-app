@@ -1,0 +1,17 @@
+[分类] 前端基础 / React
+[题库] 核心概念测试
+
+[题目] React 中 useState 的作用是什么？
+[A] 用于处理副作用
+[B] 用于在函数组件中添加状态
+[C] 用于路由跳转
+[D] 用于获取 DOM 元素
+[答案] B
+[解析] useState 是 React 提供的一个 Hook，允许我们在函数组件中添加状态。
+
+[题目] 下列哪个生命周期方法会在组件挂载后执行？
+[A] componentWillMount
+[B] componentDidMount
+[C] componentWillReceiveProps
+[D] componentWillUnmount
+[答案] B
