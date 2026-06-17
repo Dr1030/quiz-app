@@ -18,10 +18,8 @@ export default function PracticeView() {
   const endPractice = useAppStore((s) => s.endPractice);
   const [showResult, setShowResult] = useState(false);
 
-  // 本地记录逐题提交结果（对错、是否已提交）
   const [submissions, setSubmissions] = useState<Record<string, SubmissionResult>>({});
 
-  // 每秒更新一次当前时间，实现实时计时
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
@@ -35,7 +33,6 @@ export default function PracticeView() {
   const currentAnswer = answers.find((a) => a.questionId === currentQ.id);
   const currentSubmission = submissions[currentQ.id];
 
-  // 点击选项（已提交后禁止修改）
   const handleOptionToggle = (optIdx: number) => {
     if (!currentAnswer || currentSubmission?.submitted) return;
     const selected = currentAnswer.selectedAnswers;
@@ -50,7 +47,6 @@ export default function PracticeView() {
     submitAnswer(currentQ.id, newSelected);
   };
 
-  // 提交本题：判断对错并显示解析
   const handleSubmitQuestion = useCallback(() => {
     if (!currentAnswer || currentSubmission?.submitted) return;
     if (currentAnswer.selectedAnswers.length === 0) {
@@ -58,7 +54,6 @@ export default function PracticeView() {
       return;
     }
 
-    // 判断对错
     const correctSet = new Set(currentQ.correctAnswers);
     const selectedSet = new Set(currentAnswer.selectedAnswers);
     const isCorrect =
@@ -71,14 +66,12 @@ export default function PracticeView() {
     }));
   }, [currentAnswer, currentQ, currentSubmission]);
 
-  // 结束整个练习（原交卷逻辑）
   const handleEndPractice = () => {
     if (!window.confirm('确定要结束练习吗？未提交的题目将不计入正确率。')) return;
-    endPractice();          // 会设置 endTime，store 中可能会根据已有答案统计
+    endPractice();
     setShowResult(true);
   };
 
-  // ---- 统计数据（基于已提交的题目） ----
   const totalQuestions = questions.length;
   const submittedCount = Object.keys(submissions).length;
   const correctCount = Object.values(submissions).filter((s) => s.isCorrect).length;
@@ -93,7 +86,6 @@ export default function PracticeView() {
     return `${m}分${s}秒`;
   };
 
-  // ---- 练习完成结果页 ----
   if (showResult && endTime) {
     const finalCorrect = correctCount;
     const finalTotal = totalQuestions;
@@ -118,7 +110,6 @@ export default function PracticeView() {
     );
   }
 
-  // ---- 选项样式（根据提交状态染色） ----
   const getOptionStyle = (optIdx: number) => {
     const isSelected = currentAnswer?.selectedAnswers.includes(optIdx);
     if (!currentSubmission?.submitted) {
@@ -126,7 +117,6 @@ export default function PracticeView() {
         ? 'border-blue-400 bg-blue-50'
         : 'border-gray-200 hover:bg-gray-50';
     }
-    // 已提交
     const isCorrectOption = currentQ.correctAnswers.includes(optIdx);
     if (isCorrectOption) {
       return 'border-green-400 bg-green-50 text-green-800';
@@ -137,7 +127,6 @@ export default function PracticeView() {
     return 'border-gray-200 text-gray-400';
   };
 
-  // ---- 底部题号样式（保留原题号跳转） ----
   const getQuestionDotStyle = (index: number) => {
     const q = questions[index];
     const ans = answers[index];
@@ -153,33 +142,36 @@ export default function PracticeView() {
     return 'bg-white border-gray-300';
   };
 
-  // ✅ 计算当前题目的显示题号（原题号）
   const currentDisplayNumber =
     currentQ.originalIndex != null ? currentQ.originalIndex + 1 : currentIndex + 1;
 
-  // ---- 主刷题界面 ----
   return (
-    <div className="flex flex-col h-full p-6">
-      {/* 顶部信息栏：进度（当前浏览位置）、正确率、计时 */}
-      <div className="flex justify-between items-center mb-4">
-        <span className="text-sm text-gray-500">
-          进度 {currentIndex + 1} / {totalQuestions}
-        </span>
-        <span className="text-sm text-gray-500">
-          正确率 {accuracy}%（{correctCount}/{submittedCount}）
-        </span>
-        <span className="text-sm text-gray-500">
-          计时：{formatTime(elapsed)}
-        </span>
+    <div className="flex flex-col h-full p-4 sm:p-6">
+      {/* 顶部信息：三个独立卡片 */}
+      <div className="flex flex-wrap gap-2 mb-4 text-sm">
+        <div className="flex-1 min-w-[80px] bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+          <div className="text-gray-500 text-xs">进度</div>
+          <div className="font-semibold">
+            {currentIndex + 1} / {totalQuestions}
+          </div>
+        </div>
+        <div className="flex-1 min-w-[80px] bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+          <div className="text-gray-500 text-xs">正确率</div>
+          <div className="font-semibold">{accuracy}%</div>
+        </div>
+        <div className="flex-1 min-w-[80px] bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+          <div className="text-gray-500 text-xs">计时</div>
+          <div className="font-semibold">{formatTime(elapsed)}</div>
+        </div>
         <button
           onClick={handleEndPractice}
-          className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+          className="px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 self-stretch"
         >
           结束练习
         </button>
       </div>
 
-      {/* 进度条：已提交题目占比 */}
+      {/* 进度条 */}
       <div className="w-full bg-gray-200 rounded-full h-2 mb-4">
         <div
           className="bg-blue-500 h-2 rounded-full transition-all"
@@ -187,8 +179,8 @@ export default function PracticeView() {
         />
       </div>
 
-      {/* 题目卡片 */}
-      <div className="flex-1 bg-white rounded-lg shadow p-6 overflow-auto">
+      {/* 题目卡片（可滚动） */}
+      <div className="flex-1 bg-white rounded-lg shadow p-4 sm:p-6 overflow-auto">
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-semibold">
             {currentDisplayNumber}. {currentQ.content}
@@ -206,12 +198,12 @@ export default function PracticeView() {
           )}
         </div>
 
-        {/* 选项列表 */}
+        {/* 选项列表：文字自动换行 */}
         <div className="space-y-2 ml-4">
           {currentQ.options.map((opt, idx) => (
             <label
               key={idx}
-              className={`flex items-center gap-2 p-2 rounded border transition-colors ${
+              className={`flex items-start gap-2 p-2 rounded border transition-colors ${
                 currentSubmission?.submitted ? 'cursor-default' : 'cursor-pointer'
               } ${getOptionStyle(idx)}`}
             >
@@ -221,10 +213,10 @@ export default function PracticeView() {
                 checked={currentAnswer?.selectedAnswers.includes(idx) || false}
                 onChange={() => handleOptionToggle(idx)}
                 disabled={currentSubmission?.submitted}
-                className="shrink-0"
+                className="shrink-0 mt-0.5"
               />
               <span className="font-medium">{String.fromCharCode(65 + idx)}.</span>
-              <span>{opt}</span>
+              <span className="whitespace-normal break-words">{opt}</span>
             </label>
           ))}
         </div>
@@ -248,7 +240,7 @@ export default function PracticeView() {
         </div>
       </div>
 
-      {/* 底部导航：小圆点显示原题号 */}
+      {/* 底部导航 */}
       <div className="flex justify-between mt-4">
         <button
           onClick={prevQuestion}
