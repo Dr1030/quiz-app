@@ -3,6 +3,9 @@
 
 import { useAppStore } from '@/lib/store';
 import { useState, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 
 interface SubmissionResult {
   isCorrect: boolean;
@@ -25,6 +28,26 @@ export default function PracticeView() {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  const [optionOrders, setOptionOrders] = useState<Record<string, number[]>>({});
+
+  useEffect(() => {
+    if (session) {
+      const orders: Record<string, number[]> = {};
+      session.questions.forEach((q) => {
+        const len = q.options.length;
+        const arr = Array.from({ length: len }, (_, i) => i);
+        for (let i = arr.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [arr[i], arr[j]] = [arr[j], arr[i]];
+        }
+        orders[q.id] = arr;
+      });
+      setOptionOrders(orders);
+    } else {
+      setOptionOrders({});
+    }
+  }, [session?.startTime]);
 
   if (!session) return null;
 
@@ -110,14 +133,14 @@ export default function PracticeView() {
     );
   }
 
-  const getOptionStyle = (optIdx: number) => {
-    const isSelected = currentAnswer?.selectedAnswers.includes(optIdx);
+  const getOptionStyle = (origIdx: number) => {
+    const isSelected = currentAnswer?.selectedAnswers.includes(origIdx);
     if (!currentSubmission?.submitted) {
       return isSelected
         ? 'border-2 border-blue-300 bg-blue-50'
         : 'border-2 border-gray-300 hover:bg-gray-50';
     }
-    const isCorrectOption = currentQ.correctAnswers.includes(optIdx);
+    const isCorrectOption = currentQ.correctAnswers.includes(origIdx);
     if (isCorrectOption) {
       return 'border-2 border-green-300 bg-green-50 text-green-800';
     }
@@ -130,9 +153,22 @@ export default function PracticeView() {
   const currentDisplayNumber =
     currentQ.originalIndex != null ? currentQ.originalIndex + 1 : currentIndex + 1;
 
+  const order = optionOrders[currentQ.id] ?? currentQ.options.map((_, i) => i);
+
+  // Markdown 渲染组件，将段落变为行内元素，避免换行破坏布局
+  const MarkdownInline = ({ children }: { children: string }) => (
+    <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{ p: 'span' }}
+    >
+      {children}
+    </ReactMarkdown>
+  );
+
   return (
     <div className="flex flex-col h-full p-4 sm:p-6">
-      {/* 顶部信息：三个独立卡片 */}
+      {/* 顶部信息 */}
       <div className="flex flex-wrap gap-2 mb-4 text-sm">
         <div className="flex-1 min-w-[80px] bg-gray-50 border-2 border-gray-300 rounded-lg p-2 text-center">
           <div className="text-gray-500 text-xs">进度</div>
@@ -150,7 +186,7 @@ export default function PracticeView() {
         </div>
         <button
           onClick={handleEndPractice}
-          className="px-3 py-2 bg-red-500 text-white rounded text-sm hover:bg-red-600 self-stretch"
+          className="px-3 py-2 bg-red-500 text-white border-2 border-red-600 rounded text-sm hover:bg-red-600 self-stretch"
         >
           结束练习
         </button>
@@ -164,11 +200,12 @@ export default function PracticeView() {
         />
       </div>
 
-      {/* 题目卡片（可滚动） */}
+      {/* 题目卡片 */}
       <div className="flex-1 bg-white rounded-lg shadow p-4 sm:p-6 overflow-auto border-2 border-gray-300">
         <div className="flex items-start justify-between mb-4">
-          <h3 className="text-lg font-semibold">
-            {currentDisplayNumber}. {currentQ.content}
+          <h3 className="text-lg font-semibold flex-1">
+            {currentDisplayNumber}.{' '}
+            <MarkdownInline>{currentQ.content}</MarkdownInline>
           </h3>
           {currentSubmission?.submitted && (
             <span
@@ -183,44 +220,58 @@ export default function PracticeView() {
           )}
         </div>
 
-        {/* 选项列表：文字自动换行 */}
         <div className="space-y-2 ml-4">
-          {currentQ.options.map((opt, idx) => (
-            <label
-              key={idx}
-              className={`flex items-start gap-2 p-2 rounded border-2 transition-colors ${
-                currentSubmission?.submitted ? 'cursor-default' : 'cursor-pointer'
-              } ${getOptionStyle(idx)}`}
-            >
-              <input
-                type={currentQ.type === 'single' ? 'radio' : 'checkbox'}
-                name={`question-${currentQ.id}`}
-                checked={currentAnswer?.selectedAnswers.includes(idx) || false}
-                onChange={() => handleOptionToggle(idx)}
-                disabled={currentSubmission?.submitted}
-                className="shrink-0 mt-0.5"
-              />
-              <span className="font-medium">{String.fromCharCode(65 + idx)}.</span>
-              <span className="whitespace-normal break-words">{opt}</span>
-            </label>
-          ))}
+          {order.map((origIdx, displayIdx) => {
+            const opt = currentQ.options[origIdx];
+            return (
+              <label
+                key={origIdx}
+                className={`flex items-start gap-2 p-2 rounded border-2 transition-colors ${
+                  currentSubmission?.submitted ? 'cursor-default' : 'cursor-pointer'
+                } ${getOptionStyle(origIdx)}`}
+              >
+                <input
+                  type={currentQ.type === 'single' ? 'radio' : 'checkbox'}
+                  name={`question-${currentQ.id}`}
+                  checked={currentAnswer?.selectedAnswers.includes(origIdx) || false}
+                  onChange={() => handleOptionToggle(origIdx)}
+                  disabled={currentSubmission?.submitted}
+                  className="shrink-0 mt-0.5"
+                />
+                <span className="font-medium">{String.fromCharCode(65 + displayIdx)}.</span>
+                <span className="whitespace-normal break-words flex-1">
+                  <MarkdownInline>{opt}</MarkdownInline>
+                </span>
+              </label>
+            );
+          })}
         </div>
 
-        {/* 解析区域（只在已提交后显示） */}
         {currentSubmission?.submitted && (
           <div className="mt-6 p-4 bg-blue-50 border-2 border-blue-300 rounded">
             <h4 className="font-semibold text-blue-800 mb-1">📖 解析</h4>
-            <p className="text-blue-900">{currentQ.analysis || '暂无解析'}</p>
+            <div className="text-blue-900">
+              {currentQ.analysis ? (
+                <ReactMarkdown
+                  remarkPlugins={[remarkMath]}
+                  rehypePlugins={[rehypeKatex]}
+                >
+                  {currentQ.analysis}
+                </ReactMarkdown>
+              ) : (
+                '暂无解析'
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* 底部导航：上一题、提交按钮（中间）、下一题 */}
+      {/* 底部导航 */}
       <div className="flex justify-between items-center mt-4">
         <button
           onClick={prevQuestion}
           disabled={currentIndex === 0}
-          className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
+          className="px-4 py-2 bg-gray-200 border-2 border-gray-400 rounded disabled:opacity-50"
         >
           上一题
         </button>
@@ -230,7 +281,7 @@ export default function PracticeView() {
             <button
               onClick={handleSubmitQuestion}
               disabled={!currentAnswer || currentAnswer.selectedAnswers.length === 0}
-              className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-6 py-2 bg-green-600 text-white border-2 border-green-700 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               提交本题
             </button>
@@ -242,7 +293,7 @@ export default function PracticeView() {
         <button
           onClick={nextQuestion}
           disabled={currentIndex === questions.length - 1}
-          className="px-4 py-2 bg-blue-500 text-white rounded disabled:opacity-50"
+          className="px-4 py-2 bg-blue-500 text-white border-2 border-blue-600 rounded disabled:opacity-50"
         >
           下一题
         </button>

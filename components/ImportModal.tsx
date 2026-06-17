@@ -9,24 +9,25 @@ interface ImportModalProps {
   onClose: () => void;
 }
 
-// 格式示例文本（提取出来方便维护和填入）
-const SAMPLE_TEXT = `[分类] 前端基础 / React
-[题库] 核心概念测试
+// 格式示例文本（数分题库，包含单选与多选，支持 LaTeX 公式）
+const SAMPLE_TEXT = `[分类] 数学分析 / 极限与连续性
+[题库] Quiz-1
 
-[题目] React 中 useState 的作用是什么？
-[A] 用于处理副作用
-[B] 用于在函数组件中添加状态
-[C] 用于路由跳转
-[D] 用于获取 DOM 元素
-[答案] B
-[解析] useState 是 React 提供的一个 Hook，允许我们在函数组件中添加状态。
+[题目] 设函数 $f(x)=\\frac{x^2-1}{x-1}$，则 $\\lim_{x\\to 1} f(x)$ 等于？
+[A] $0$
+[B] $1$
+[C] $2$
+[D] 不存在
+[答案] C
+[解析] 当 $x\\neq 1$ 时，$f(x)=x+1$，故 $\\lim_{x\\to 1}f(x)=2$。
 
-[题目] 下列哪个生命周期方法会在组件挂载后执行？
-[A] componentWillMount
-[B] componentDidMount
-[C] componentWillReceiveProps
-[D] componentWillUnmount
-[答案] B`;
+[题目] 以下哪些条件可以保证函数 $f$ 在点 $x_0$ 处连续？（多选）
+[A] $\\lim_{x\\to x_0} f(x)$ 存在
+[B] $\\lim_{x\\to x_0} f(x) = f(x_0)$
+[C] $f$ 在 $x_0$ 处可导
+[D] $\\lim_{x\\to x_0^+} f(x) = \\lim_{x\\to x_0^-} f(x)$
+[答案] BC
+[解析] 连续性定义要求极限存在且等于函数值，故 B 正确。可导必连续，故 C 正确。A 仅要求极限存在，未要求等于函数值；D 左右极限相等但可能不等于函数值，均不充分。`;
 
 export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
   const [text, setText] = useState("");
@@ -65,7 +66,7 @@ export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
         <div className="mb-3">
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
-              📋 格式参考（点击按钮可填入下方输入框）
+              📋 格式参考（支持 $LaTeX$ 公式，点击按钮可填入下方输入框）
             </span>
             <button
               onClick={handleUseSample}
@@ -83,7 +84,7 @@ export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="在此粘贴你的题目文本，格式同上..."
+          placeholder="在此粘贴题目文本，支持 $LaTeX$ 数学公式..."
           className="mb-4 flex-1 min-h-[200px] w-full rounded border border-gray-300 p-3 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
         />
 
