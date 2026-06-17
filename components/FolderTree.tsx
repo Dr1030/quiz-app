@@ -145,21 +145,22 @@ function FolderNode({
         )}
 
         {!isEditing && (
-          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
+          /* 手机端始终显示，桌面端 hover 显示 */
+          <div className="flex items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             <button
               onClick={(e) => {
                 e.stopPropagation();
                 setIsCreatingSub(true);
                 setExpanded(true);
               }}
-              className="text-xs px-1 text-gray-400 hover:text-blue-600"
+              className="text-xs px-2 py-0.5 text-gray-600 hover:text-blue-600"
               title="新建子文件夹"
             >
               +
             </button>
             <button
               onClick={handleDeleteFolder}
-              className="text-xs px-1 text-gray-400 hover:text-red-600"
+              className="text-xs px-2 py-0.5 text-gray-600 hover:text-red-600"
               title="删除文件夹"
             >
               🗑️
@@ -273,7 +274,8 @@ function FolderNode({
                         useAppStore.getState().deleteQuiz(quiz.id);
                       }
                     }}
-                    className="opacity-0 group-hover:opacity-100 mr-2 text-xs text-gray-400 hover:text-red-600 transition-opacity"
+                    /* 手机端始终显示，桌面端 hover 显示 */
+                    className="mr-2 text-xs text-gray-600 hover:text-red-600 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                     title="删除试卷"
                   >
                     🗑️
