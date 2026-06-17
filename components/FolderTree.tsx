@@ -48,7 +48,6 @@ function FolderNode({
   const hasChildren = children.length > 0;
   const folderQuizzes = allQuizzes.filter((q) => q.folderId === folder.id);
 
-  // 缩进减小为12px，适应窄屏
   const indent = level * 12;
 
   const handleAddSubFolder = () => {
@@ -129,7 +128,7 @@ function FolderNode({
             onKeyDown={handleKeyDown}
             onBlur={handleSaveRename}
             onClick={(e) => e.stopPropagation()}
-            className="text-sm flex-1 border border-blue-300 rounded px-1 outline-none focus:border-blue-500"
+            className="text-sm flex-1 border-2 border-blue-300 rounded px-1 outline-none focus:border-blue-500"
           />
         ) : (
           <span
@@ -145,7 +144,6 @@ function FolderNode({
         )}
 
         {!isEditing && (
-          /* 手机端始终显示，桌面端 hover 显示 */
           <div className="flex items-center gap-0.5 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
             <button
               onClick={(e) => {
@@ -187,7 +185,7 @@ function FolderNode({
               if (!subName.trim()) setIsCreatingSub(false);
             }}
             placeholder="子文件夹名称..."
-            className="text-xs border border-blue-300 rounded px-2 py-0.5 w-full outline-none focus:border-blue-500"
+            className="text-xs border-2 border-blue-300 rounded px-2 py-0.5 w-full outline-none focus:border-blue-500"
           />
         </div>
       )}
@@ -236,7 +234,7 @@ function FolderNode({
                       onChange={(e) => setEditQuizName(e.target.value)}
                       onKeyDown={(e) => handleQuizKeyDown(e, quiz.id)}
                       onBlur={() => saveQuizRename(quiz.id)}
-                      className="text-sm flex-1 border border-blue-300 rounded px-1 outline-none"
+                      className="text-sm flex-1 border-2 border-blue-300 rounded px-1 outline-none"
                     />
                   </div>
                 ) : (
@@ -274,7 +272,6 @@ function FolderNode({
                         useAppStore.getState().deleteQuiz(quiz.id);
                       }
                     }}
-                    /* 手机端始终显示，桌面端 hover 显示 */
                     className="mr-2 text-xs text-gray-600 hover:text-red-600 transition-opacity sm:opacity-0 sm:group-hover:opacity-100"
                     title="删除试卷"
                   >
@@ -290,12 +287,17 @@ function FolderNode({
   );
 }
 
+// 侧边栏抽屉组件，接收 open / onClose 由外部控制
 export default function FolderTree({
   selectedId,
   onSelect,
+  open,
+  onClose,
 }: {
   selectedId: string | null;
   onSelect: (id: string) => void;
+  open: boolean;
+  onClose: () => void;
 }) {
   const folders = useAppStore((s) => s.folders);
   const quizzes = useAppStore((s) => s.quizzes);
@@ -305,14 +307,6 @@ export default function FolderTree({
   const [selectMode, setSelectMode] = useState(false);
   const [selectedQuizIds, setSelectedQuizIds] = useState<Set<string>>(new Set());
   const [shuffle, setShuffle] = useState(false);
-
-  // 侧边栏折叠状态：手机屏（<640px）默认折叠
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return window.innerWidth < 640;
-    }
-    return false;
-  });
 
   const toggleQuizSelection = (quizId: string) => {
     const newSet = new Set(selectedQuizIds);
@@ -333,103 +327,104 @@ export default function FolderTree({
     startPractice(config);
     setSelectMode(false);
     setSelectedQuizIds(new Set());
+    onClose(); // 开始练习后关闭侧边栏
   };
 
   return (
-    <aside
-      className={`${
-        sidebarCollapsed ? 'w-10' : 'w-64'
-      } border-r border-gray-200 bg-white h-screen overflow-y-auto transition-all duration-300 flex flex-col shrink-0`}
-    >
-      {/* 折叠状态仅显示展开按钮 */}
-      {sidebarCollapsed ? (
-        <div className="flex justify-center pt-3">
+    <>
+      {/* 遮罩层 */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 transition-opacity"
+          onClick={onClose}
+        />
+      )}
+
+      {/* 侧边栏抽屉 */}
+      <aside
+        className={`fixed top-0 left-0 h-full w-64 bg-white border-r-2 border-gray-300 z-50 transform transition-transform duration-300 ease-in-out ${
+          open ? 'translate-x-0' : '-translate-x-full'
+        } flex flex-col shadow-xl`}
+      >
+        {/* 标题栏 */}
+        <div className="flex items-center justify-between px-3 pt-3 pb-2 bg-gray-50 border-b-2 border-gray-300">
+          <h2 className="text-lg font-bold">📂 题库目录</h2>
           <button
-            onClick={() => setSidebarCollapsed(false)}
-            className="text-gray-500 hover:text-blue-600 p-1 rounded"
-            title="展开侧边栏"
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 p-1 rounded"
+            title="关闭侧边栏"
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
           </button>
         </div>
-      ) : (
-        <>
-          <div className="flex items-center justify-between mb-3 px-2">
-            <h2 className="text-lg font-bold">📂 题库目录</h2>
+
+        {/* 刷题控制区 */}
+        <div className="px-3 py-2 bg-gray-50 border-b-2 border-gray-300">
+          {!selectMode ? (
             <button
-              onClick={() => setSidebarCollapsed(true)}
-              className="text-gray-400 hover:text-gray-600 p-1 rounded"
-              title="折叠侧边栏"
+              onClick={() => setSelectMode(true)}
+              className="w-full py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
+              ✏️ 选择刷题
             </button>
-          </div>
-
-          {/* 刷题控制区 */}
-          <div className="mb-3 px-2 space-y-2">
-            {!selectMode ? (
-              <button
-                onClick={() => setSelectMode(true)}
-                className="w-full py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600"
-              >
-                ✏️ 选择刷题
-              </button>
-            ) : (
-              <div className="bg-gray-50 p-2 rounded border">
-                <div className="flex items-center gap-2 mb-2">
-                  <label className="text-xs flex items-center gap-1">
-                    <input
-                      type="checkbox"
-                      checked={shuffle}
-                      onChange={(e) => setShuffle(e.target.checked)}
-                    />
-                    乱序
-                  </label>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleStartPractice}
-                    className="flex-1 py-1 bg-blue-500 text-white rounded text-xs"
-                  >
-                    开始 ({selectedQuizIds.size} 个)
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSelectMode(false);
-                      setSelectedQuizIds(new Set());
-                    }}
-                    className="px-2 py-1 bg-gray-300 rounded text-xs"
-                  >
-                    取消
-                  </button>
-                </div>
+          ) : (
+            <div className="bg-white p-2 rounded border-2 border-gray-300">
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-xs flex items-center gap-1">
+                  <input
+                    type="checkbox"
+                    checked={shuffle}
+                    onChange={(e) => setShuffle(e.target.checked)}
+                  />
+                  乱序
+                </label>
               </div>
-            )}
-          </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleStartPractice}
+                  className="flex-1 py-1 bg-blue-500 text-white rounded text-xs"
+                >
+                  开始 ({selectedQuizIds.size} 个)
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectMode(false);
+                    setSelectedQuizIds(new Set());
+                  }}
+                  className="px-2 py-1 bg-gray-300 rounded text-xs"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
-          <div className="flex-1 space-y-0.5 px-2">
-            {rootFolders.map((folder) => (
-              <FolderNode
-                key={folder.id}
-                folder={folder}
-                allFolders={folders}
-                allQuizzes={quizzes}
-                level={0}
-                selectedId={selectedId}
-                onSelect={onSelect}
-                selectMode={selectMode}
-                selectedQuizIds={selectedQuizIds}
-                onToggleSelect={toggleQuizSelection}
-              />
-            ))}
-          </div>
+        {/* 文件夹树（可滚动） */}
+        <div className="flex-1 overflow-y-auto bg-white px-2 py-1">
+          {rootFolders.map((folder) => (
+            <FolderNode
+              key={folder.id}
+              folder={folder}
+              allFolders={folders}
+              allQuizzes={quizzes}
+              level={0}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              selectMode={selectMode}
+              selectedQuizIds={selectedQuizIds}
+              onToggleSelect={toggleQuizSelection}
+            />
+          ))}
+        </div>
+
+        {/* 新建文件夹按钮 */}
+        <div className="px-3 py-2 bg-gray-50 border-t-2 border-gray-300">
           <AddFolderButton />
-        </>
-      )}
-    </aside>
+        </div>
+      </aside>
+    </>
   );
 }

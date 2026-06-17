@@ -114,32 +114,17 @@ export default function PracticeView() {
     const isSelected = currentAnswer?.selectedAnswers.includes(optIdx);
     if (!currentSubmission?.submitted) {
       return isSelected
-        ? 'border-blue-400 bg-blue-50'
-        : 'border-gray-200 hover:bg-gray-50';
+        ? 'border-2 border-blue-300 bg-blue-50'
+        : 'border-2 border-gray-300 hover:bg-gray-50';
     }
     const isCorrectOption = currentQ.correctAnswers.includes(optIdx);
     if (isCorrectOption) {
-      return 'border-green-400 bg-green-50 text-green-800';
+      return 'border-2 border-green-300 bg-green-50 text-green-800';
     }
     if (isSelected && !isCorrectOption) {
-      return 'border-red-400 bg-red-50 text-red-800';
+      return 'border-2 border-red-300 bg-red-50 text-red-800';
     }
-    return 'border-gray-200 text-gray-400';
-  };
-
-  const getQuestionDotStyle = (index: number) => {
-    const q = questions[index];
-    const ans = answers[index];
-    const sub = submissions[q.id];
-    if (sub?.submitted) {
-      return sub.isCorrect
-        ? 'bg-green-500 text-white border-green-500'
-        : 'bg-red-500 text-white border-red-500';
-    }
-    if (ans?.selectedAnswers.length > 0) {
-      return 'bg-yellow-100 border-yellow-400 text-yellow-700';
-    }
-    return 'bg-white border-gray-300';
+    return 'border-2 border-gray-300 text-gray-400';
   };
 
   const currentDisplayNumber =
@@ -149,17 +134,17 @@ export default function PracticeView() {
     <div className="flex flex-col h-full p-4 sm:p-6">
       {/* 顶部信息：三个独立卡片 */}
       <div className="flex flex-wrap gap-2 mb-4 text-sm">
-        <div className="flex-1 min-w-[80px] bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+        <div className="flex-1 min-w-[80px] bg-gray-50 border-2 border-gray-300 rounded-lg p-2 text-center">
           <div className="text-gray-500 text-xs">进度</div>
           <div className="font-semibold">
             {currentIndex + 1} / {totalQuestions}
           </div>
         </div>
-        <div className="flex-1 min-w-[80px] bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+        <div className="flex-1 min-w-[80px] bg-gray-50 border-2 border-gray-300 rounded-lg p-2 text-center">
           <div className="text-gray-500 text-xs">正确率</div>
           <div className="font-semibold">{accuracy}%</div>
         </div>
-        <div className="flex-1 min-w-[80px] bg-gray-50 border border-gray-200 rounded-lg p-2 text-center">
+        <div className="flex-1 min-w-[80px] bg-gray-50 border-2 border-gray-300 rounded-lg p-2 text-center">
           <div className="text-gray-500 text-xs">计时</div>
           <div className="font-semibold">{formatTime(elapsed)}</div>
         </div>
@@ -180,7 +165,7 @@ export default function PracticeView() {
       </div>
 
       {/* 题目卡片（可滚动） */}
-      <div className="flex-1 bg-white rounded-lg shadow p-4 sm:p-6 overflow-auto">
+      <div className="flex-1 bg-white rounded-lg shadow p-4 sm:p-6 overflow-auto border-2 border-gray-300">
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-semibold">
             {currentDisplayNumber}. {currentQ.content}
@@ -203,7 +188,7 @@ export default function PracticeView() {
           {currentQ.options.map((opt, idx) => (
             <label
               key={idx}
-              className={`flex items-start gap-2 p-2 rounded border transition-colors ${
+              className={`flex items-start gap-2 p-2 rounded border-2 transition-colors ${
                 currentSubmission?.submitted ? 'cursor-default' : 'cursor-pointer'
               } ${getOptionStyle(idx)}`}
             >
@@ -221,8 +206,26 @@ export default function PracticeView() {
           ))}
         </div>
 
-        {/* 提交按钮 / 解析区域 */}
-        <div className="mt-6">
+        {/* 解析区域（只在已提交后显示） */}
+        {currentSubmission?.submitted && (
+          <div className="mt-6 p-4 bg-blue-50 border-2 border-blue-300 rounded">
+            <h4 className="font-semibold text-blue-800 mb-1">📖 解析</h4>
+            <p className="text-blue-900">{currentQ.analysis || '暂无解析'}</p>
+          </div>
+        )}
+      </div>
+
+      {/* 底部导航：上一题、提交按钮（中间）、下一题 */}
+      <div className="flex justify-between items-center mt-4">
+        <button
+          onClick={prevQuestion}
+          disabled={currentIndex === 0}
+          className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
+        >
+          上一题
+        </button>
+
+        <div className="flex justify-center">
           {!currentSubmission?.submitted ? (
             <button
               onClick={handleSubmitQuestion}
@@ -232,39 +235,10 @@ export default function PracticeView() {
               提交本题
             </button>
           ) : (
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded">
-              <h4 className="font-semibold text-blue-800 mb-1">📖 解析</h4>
-              <p className="text-blue-900">{currentQ.analysis || '暂无解析'}</p>
-            </div>
+            <span className="text-sm text-green-600 font-medium">已提交 ✓</span>
           )}
         </div>
-      </div>
 
-      {/* 底部导航 */}
-      <div className="flex justify-between mt-4">
-        <button
-          onClick={prevQuestion}
-          disabled={currentIndex === 0}
-          className="px-4 py-2 bg-gray-200 rounded disabled:opacity-50"
-        >
-          上一题
-        </button>
-        <span className="flex gap-2 items-center text-sm">
-          {questions.map((q, i) => {
-            const dotNumber = q.originalIndex != null ? q.originalIndex + 1 : i + 1;
-            return (
-              <button
-                key={q.id}
-                onClick={() => goToQuestion(i)}
-                className={`w-6 h-6 rounded-full text-xs font-medium border ${getQuestionDotStyle(
-                  i
-                )} ${i === currentIndex ? 'ring-2 ring-offset-1 ring-blue-400' : ''}`}
-              >
-                {dotNumber}
-              </button>
-            );
-          })}
-        </span>
         <button
           onClick={nextQuestion}
           disabled={currentIndex === questions.length - 1}
