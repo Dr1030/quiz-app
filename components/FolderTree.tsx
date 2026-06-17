@@ -13,7 +13,6 @@ interface FolderNodeProps {
   level: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
-  // 刷题多选相关
   selectMode?: boolean;
   selectedQuizIds?: Set<string>;
   onToggleSelect?: (quizId: string) => void;
@@ -39,17 +38,18 @@ function FolderNode({
   const [isCreatingSub, setIsCreatingSub] = useState(false);
   const [subName, setSubName] = useState('');
 
-  // 文件夹编辑状态
   const [isEditing, setIsEditing] = useState(false);
   const [editName, setEditName] = useState(folder.name);
 
-  // 题库编辑状态
   const [editingQuizId, setEditingQuizId] = useState<string | null>(null);
   const [editQuizName, setEditQuizName] = useState('');
 
   const children = allFolders.filter((f) => f.parentId === folder.id);
   const hasChildren = children.length > 0;
   const folderQuizzes = allQuizzes.filter((q) => q.folderId === folder.id);
+
+  // 缩进减小为12px，适应窄屏
+  const indent = level * 12;
 
   const handleAddSubFolder = () => {
     if (!subName.trim()) return;
@@ -106,10 +106,9 @@ function FolderNode({
 
   return (
     <div>
-      {/* 文件夹行 */}
       <div
         className={`flex items-center gap-1 py-1 px-2 rounded group select-none transition-colors cursor-pointer hover:bg-gray-100 text-gray-700`}
-        style={{ paddingLeft: `${level * 16}px` }}
+        style={{ paddingLeft: `${indent}px` }}
         onClick={() => !isEditing && (hasChildren || folderQuizzes.length > 0) && setExpanded(!expanded)}
       >
         <span
@@ -169,9 +168,8 @@ function FolderNode({
         )}
       </div>
 
-      {/* 子文件夹输入框 */}
       {isCreatingSub && (
-        <div className="flex items-center gap-1 py-1 px-2" style={{ paddingLeft: `${(level + 1) * 16}px` }}>
+        <div className="flex items-center gap-1 py-1 px-2" style={{ paddingLeft: `${(level + 1) * 12}px` }}>
           <span className="text-xs">•</span>
           <input
             autoFocus
@@ -193,7 +191,6 @@ function FolderNode({
         </div>
       )}
 
-      {/* 展开内容 */}
       {expanded && (
         <div>
           {children.map((child) => (
@@ -211,14 +208,12 @@ function FolderNode({
             />
           ))}
 
-          {/* 题库列表 */}
           {folderQuizzes.map((quiz) => {
             const isSelected = selectedId === quiz.id;
             const isEditingQuiz = editingQuizId === quiz.id;
 
             return (
               <div key={quiz.id} className="group flex items-center w-full">
-                {/* 选择模式下显示复选框 */}
                 {selectMode && (
                   <input
                     type="checkbox"
@@ -231,7 +226,7 @@ function FolderNode({
                 {isEditingQuiz ? (
                   <div
                     className="flex-1 flex items-center gap-1 py-1 px-2"
-                    style={{ paddingLeft: `${(level + 1) * 16}px` }}
+                    style={{ paddingLeft: `${(level + 1) * 12}px` }}
                   >
                     <span className="text-xs">📝</span>
                     <input
@@ -262,7 +257,7 @@ function FolderNode({
                         ? 'bg-blue-100 text-blue-700 font-medium'
                         : 'hover:bg-gray-50 text-gray-600'
                     }`}
-                    style={{ paddingLeft: `${(level + 1) * 16}px` }}
+                    style={{ paddingLeft: `${(level + 1) * 12}px` }}
                     title="双击重命名题库"
                   >
                     <span className="text-xs">📝</span>
@@ -270,7 +265,6 @@ function FolderNode({
                   </button>
                 )}
 
-                {/* 删除按钮（选择模式和编辑时隐藏） */}
                 {!selectMode && !isEditingQuiz && (
                   <button
                     onClick={(e) => {
@@ -310,6 +304,14 @@ export default function FolderTree({
   const [selectedQuizIds, setSelectedQuizIds] = useState<Set<string>>(new Set());
   const [shuffle, setShuffle] = useState(false);
 
+  // 侧边栏折叠状态：手机屏（<640px）默认折叠
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 640;
+    }
+    return false;
+  });
+
   const toggleQuizSelection = (quizId: string) => {
     const newSet = new Set(selectedQuizIds);
     if (newSet.has(quizId)) newSet.delete(quizId);
@@ -332,68 +334,100 @@ export default function FolderTree({
   };
 
   return (
-    <aside className="w-64 border-r border-gray-200 bg-white h-screen overflow-y-auto p-3 flex flex-col">
-      <h2 className="text-lg font-bold mb-3 px-2">📂 题库目录</h2>
-
-      {/* 刷题控制区 */}
-      <div className="mb-3 px-2 space-y-2">
-        {!selectMode ? (
+    <aside
+      className={`${
+        sidebarCollapsed ? 'w-10' : 'w-64'
+      } border-r border-gray-200 bg-white h-screen overflow-y-auto transition-all duration-300 flex flex-col shrink-0`}
+    >
+      {/* 折叠状态仅显示展开按钮 */}
+      {sidebarCollapsed ? (
+        <div className="flex justify-center pt-3">
           <button
-            onClick={() => setSelectMode(true)}
-            className="w-full py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+            onClick={() => setSidebarCollapsed(false)}
+            className="text-gray-500 hover:text-blue-600 p-1 rounded"
+            title="展开侧边栏"
           >
-            ✏️ 选择刷题
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
           </button>
-        ) : (
-          <div className="bg-gray-50 p-2 rounded border">
-            <div className="flex items-center gap-2 mb-2">
-              <label className="text-xs flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={shuffle}
-                  onChange={(e) => setShuffle(e.target.checked)}
-                />
-                乱序
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={handleStartPractice}
-                className="flex-1 py-1 bg-blue-500 text-white rounded text-xs"
-              >
-                开始 ({selectedQuizIds.size} 个)
-              </button>
-              <button
-                onClick={() => {
-                  setSelectMode(false);
-                  setSelectedQuizIds(new Set());
-                }}
-                className="px-2 py-1 bg-gray-300 rounded text-xs"
-              >
-                取消
-              </button>
-            </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3 px-2">
+            <h2 className="text-lg font-bold">📂 题库目录</h2>
+            <button
+              onClick={() => setSidebarCollapsed(true)}
+              className="text-gray-400 hover:text-gray-600 p-1 rounded"
+              title="折叠侧边栏"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
           </div>
-        )}
-      </div>
 
-      <div className="flex-1 space-y-0.5">
-        {rootFolders.map((folder) => (
-          <FolderNode
-            key={folder.id}
-            folder={folder}
-            allFolders={folders}
-            allQuizzes={quizzes}
-            level={0}
-            selectedId={selectedId}
-            onSelect={onSelect}
-            selectMode={selectMode}
-            selectedQuizIds={selectedQuizIds}
-            onToggleSelect={toggleQuizSelection}
-          />
-        ))}
-      </div>
-      <AddFolderButton />
+          {/* 刷题控制区 */}
+          <div className="mb-3 px-2 space-y-2">
+            {!selectMode ? (
+              <button
+                onClick={() => setSelectMode(true)}
+                className="w-full py-1.5 bg-green-500 text-white rounded text-sm hover:bg-green-600"
+              >
+                ✏️ 选择刷题
+              </button>
+            ) : (
+              <div className="bg-gray-50 p-2 rounded border">
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-xs flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={shuffle}
+                      onChange={(e) => setShuffle(e.target.checked)}
+                    />
+                    乱序
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleStartPractice}
+                    className="flex-1 py-1 bg-blue-500 text-white rounded text-xs"
+                  >
+                    开始 ({selectedQuizIds.size} 个)
+                  </button>
+                  <button
+                    onClick={() => {
+                      setSelectMode(false);
+                      setSelectedQuizIds(new Set());
+                    }}
+                    className="px-2 py-1 bg-gray-300 rounded text-xs"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-1 space-y-0.5 px-2">
+            {rootFolders.map((folder) => (
+              <FolderNode
+                key={folder.id}
+                folder={folder}
+                allFolders={folders}
+                allQuizzes={quizzes}
+                level={0}
+                selectedId={selectedId}
+                onSelect={onSelect}
+                selectMode={selectMode}
+                selectedQuizIds={selectedQuizIds}
+                onToggleSelect={toggleQuizSelection}
+              />
+            ))}
+          </div>
+          <AddFolderButton />
+        </>
+      )}
     </aside>
   );
 }

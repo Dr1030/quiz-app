@@ -137,7 +137,7 @@ export default function PracticeView() {
     return 'border-gray-200 text-gray-400';
   };
 
-  // ---- 底部题号样式 ----
+  // ---- 底部题号样式（保留原题号跳转） ----
   const getQuestionDotStyle = (index: number) => {
     const q = questions[index];
     const ans = answers[index];
@@ -153,10 +153,14 @@ export default function PracticeView() {
     return 'bg-white border-gray-300';
   };
 
+  // ✅ 计算当前题目的显示题号（原题号）
+  const currentDisplayNumber =
+    currentQ.originalIndex != null ? currentQ.originalIndex + 1 : currentIndex + 1;
+
   // ---- 主刷题界面 ----
   return (
     <div className="flex flex-col h-full p-6">
-      {/* 顶部信息栏：进度、正确率、计时 */}
+      {/* 顶部信息栏：进度（当前浏览位置）、正确率、计时 */}
       <div className="flex justify-between items-center mb-4">
         <span className="text-sm text-gray-500">
           进度 {currentIndex + 1} / {totalQuestions}
@@ -187,7 +191,7 @@ export default function PracticeView() {
       <div className="flex-1 bg-white rounded-lg shadow p-6 overflow-auto">
         <div className="flex items-start justify-between mb-4">
           <h3 className="text-lg font-semibold">
-            {currentIndex + 1}. {currentQ.content}
+            {currentDisplayNumber}. {currentQ.content}
           </h3>
           {currentSubmission?.submitted && (
             <span
@@ -244,7 +248,7 @@ export default function PracticeView() {
         </div>
       </div>
 
-      {/* 底部导航 */}
+      {/* 底部导航：小圆点显示原题号 */}
       <div className="flex justify-between mt-4">
         <button
           onClick={prevQuestion}
@@ -254,17 +258,20 @@ export default function PracticeView() {
           上一题
         </button>
         <span className="flex gap-2 items-center text-sm">
-          {questions.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => goToQuestion(i)}
-              className={`w-6 h-6 rounded-full text-xs font-medium border ${getQuestionDotStyle(
-                i
-              )} ${i === currentIndex ? 'ring-2 ring-offset-1 ring-blue-400' : ''}`}
-            >
-              {i + 1}
-            </button>
-          ))}
+          {questions.map((q, i) => {
+            const dotNumber = q.originalIndex != null ? q.originalIndex + 1 : i + 1;
+            return (
+              <button
+                key={q.id}
+                onClick={() => goToQuestion(i)}
+                className={`w-6 h-6 rounded-full text-xs font-medium border ${getQuestionDotStyle(
+                  i
+                )} ${i === currentIndex ? 'ring-2 ring-offset-1 ring-blue-400' : ''}`}
+              >
+                {dotNumber}
+              </button>
+            );
+          })}
         </span>
         <button
           onClick={nextQuestion}

@@ -12,7 +12,7 @@ export default function AddFolderButton() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    addFolder(name.trim(), null); // 暂时只支持创建根文件夹
+    addFolder(name.trim(), null);
     setName('');
     setIsAdding(false);
   };
@@ -25,12 +25,12 @@ export default function AddFolderButton() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="文件夹名称..."
-          className="flex-1 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500"
+          className="flex-1 min-w-0 text-sm border rounded px-2 py-1 outline-none focus:border-blue-500"
         />
-        <button type="submit" className="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600">
+        <button type="submit" className="text-sm bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 shrink-0">
           ✓
         </button>
-        <button type="button" onClick={() => setIsAdding(false)} className="text-sm px-2 py-1 rounded hover:bg-gray-100">
+        <button type="button" onClick={() => setIsAdding(false)} className="text-sm px-2 py-1 rounded hover:bg-gray-100 shrink-0">
           ✕
         </button>
       </form>

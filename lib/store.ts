@@ -211,52 +211,45 @@ export const useAppStore = create<AppState>()(
 
       // ✅ 练习方法
       startPractice: (config) => {
-        const state = get();
-        const questionIdsSet = new Set<string>();
-        config.quizIds.forEach((qid) => {
-          const quiz = state.quizzes.find((q) => q.id === qid);
-          if (quiz) quiz.questionIds.forEach((id) => questionIdsSet.add(id));
-        });
-        let questions = Array.from(questionIdsSet)
-          .map((id) => state.questions.find((q) => q.id === id))
-          .filter(Boolean) as Question[];
+  const state = get();
+  const allQuestions: (Question & { originalIndex: number })[] = [];
 
-        if (questions.length === 0) {
-          alert('所选题库中没有题目');
-          return;
-        }
+  // 遍历每个选中题库，按 quiz.questionIds 顺序收集题目并附加原始索引
+  config.quizIds.forEach((qid) => {
+    const quiz = state.quizzes.find((q) => q.id === qid);
+    if (!quiz) return;
+    quiz.questionIds.forEach((questionId, idx) => {
+      const q = state.questions.find((q) => q.id === questionId);
+      if (q && !allQuestions.some((existing) => existing.id === q.id)) {
+        allQuestions.push({ ...q, originalIndex: idx });
+      }
+    });
+  });
 
-        if (config.shuffle) {
-          for (let i = questions.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [questions[i], questions[j]] = [questions[j], questions[i]];
-          }
-        } else {
-          // 按题库顺序和题目原始顺序排列
-          const ordered: Question[] = [];
-          config.quizIds.forEach((qid) => {
-            const quiz = state.quizzes.find((q) => q.id === qid);
-            if (quiz) {
-              quiz.questionIds.forEach((id) => {
-                const q = state.questions.find((q) => q.id === id);
-                if (q && !ordered.some((existing) => existing.id === q.id)) {
-                  ordered.push(q);
-                }
-              });
-            }
-          });
-          questions = ordered;
-        }
+  if (allQuestions.length === 0) {
+    alert('所选题库中没有题目');
+    return;
+  }
 
-        const session: PracticeSession = {
-          config,
-          questions,
-          currentIndex: 0,
-          answers: questions.map((q) => ({ questionId: q.id, selectedAnswers: [] })),
-          startTime: Date.now(),
-        };
-        set({ currentPractice: session });
-      },
+  let questions = [...allQuestions];
+
+  if (config.shuffle) {
+    for (let i = questions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questions[i], questions[j]] = [questions[j], questions[i]];
+    }
+  }
+  // 非乱序时 questions 已经是按题库、原始顺序排列，无需再处理
+
+  const session: PracticeSession = {
+    config,
+    questions,
+    currentIndex: 0,
+    answers: questions.map((q) => ({ questionId: q.id, selectedAnswers: [] })),
+    startTime: Date.now(),
+  };
+  set({ currentPractice: session });
+},
 
       endPractice: () => {
         set((s) => {

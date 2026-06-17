@@ -23,6 +23,7 @@ export interface Question {
   correctAnswers: number[];
   type: QuestionType;
   analysis?: string;
+  originalIndex?: number;
 }
 
 // ✅ 新增：练习配置
