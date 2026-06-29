@@ -12,6 +12,20 @@ interface SubmissionResult {
   submitted: boolean;
 }
 
+// ✅ 安全的 MarkdownInline，接受 ReactNode，内部只渲染字符串内容
+const MarkdownInline = ({ children }: { children: React.ReactNode }) => {
+  const text = typeof children === 'string' ? children : '';
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkMath]}
+      rehypePlugins={[rehypeKatex]}
+      components={{ p: 'span' }}
+    >
+      {text}
+    </ReactMarkdown>
+  );
+};
+
 export default function PracticeView() {
   const session = useAppStore((s) => s.currentPractice);
   const submitAnswer = useAppStore((s) => s.submitAnswer);
@@ -19,11 +33,15 @@ export default function PracticeView() {
   const prevQuestion = useAppStore((s) => s.prevQuestion);
   const goToQuestion = useAppStore((s) => s.goToQuestion);
   const endPractice = useAppStore((s) => s.endPractice);
+  const folders = useAppStore((s) => s.folders);
+  const quizzes = useAppStore((s) => s.quizzes);
+  const getFolderPath = useAppStore((s) => s.getFolderPath);
+
   const [showResult, setShowResult] = useState(false);
-
+  const [showWrongQuestions, setShowWrongQuestions] = useState(false);
   const [submissions, setSubmissions] = useState<Record<string, SubmissionResult>>({});
-
   const [now, setNow] = useState(Date.now());
+
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -76,13 +94,11 @@ export default function PracticeView() {
       alert('请至少选择一个选项');
       return;
     }
-
     const correctSet = new Set(currentQ.correctAnswers);
     const selectedSet = new Set(currentAnswer.selectedAnswers);
     const isCorrect =
       correctSet.size === selectedSet.size &&
       [...correctSet].every((idx) => selectedSet.has(idx));
-
     setSubmissions((prev) => ({
       ...prev,
       [currentQ.id]: { isCorrect, submitted: true },
@@ -109,20 +125,80 @@ export default function PracticeView() {
     return `${m}分${s}秒`;
   };
 
+  // 结果页
   if (showResult && endTime) {
     const finalCorrect = correctCount;
     const finalTotal = totalQuestions;
     const finalAccuracy = finalTotal > 0 ? Math.round((finalCorrect / finalTotal) * 100) : 0;
+
+    const wrongQuestions = questions.filter((q) => {
+      const sub = submissions[q.id];
+      return sub?.submitted && !sub.isCorrect;
+    });
+
+    const getQuestionLocation = (questionId: string) => {
+      const question = questions.find((q) => q.id === questionId);
+      if (!question) return { quizName: '未知', folderPath: '' };
+      const quiz = quizzes.find((qz) => qz.id === question.quizId);
+      if (!quiz) return { quizName: '未知', folderPath: '' };
+      const folderPath = getFolderPath(quiz.folderId);
+      return { quizName: quiz.name, folderPath };
+    };
+
     return (
-      <div className="flex flex-col items-center justify-center h-full p-8">
+      <div className="flex flex-col items-center justify-center h-full p-4 sm:p-8 overflow-auto">
         <h2 className="text-2xl font-bold mb-4">练习完成！</h2>
-        <div className="bg-white rounded-lg shadow p-6 space-y-2">
+        <div className="bg-white rounded-lg shadow p-6 space-y-2 max-w-md w-full">
           <p>总题数：<strong>{finalTotal}</strong></p>
           <p>已提交：<strong>{submittedCount}</strong></p>
           <p>正确数：<strong className="text-green-600">{finalCorrect}</strong></p>
           <p>正确率：<strong>{finalAccuracy}%</strong>（基于已提交题目）</p>
           <p>用时：<strong>{formatTime(elapsed)}</strong></p>
         </div>
+
+        <button
+          onClick={() => setShowWrongQuestions(!showWrongQuestions)}
+          className="mt-4 px-6 py-2 bg-yellow-500 text-white rounded hover:bg-yellow-600"
+        >
+          {showWrongQuestions ? '隐藏错题' : `查看错题 (${wrongQuestions.length})`}
+        </button>
+
+        {showWrongQuestions && (
+          <div className="mt-4 w-full max-w-lg bg-white rounded-lg shadow p-4 max-h-96 overflow-y-auto space-y-3">
+            {wrongQuestions.length === 0 ? (
+              <p className="text-gray-500 text-center">🎉 没有错题，太棒了！</p>
+            ) : (
+              wrongQuestions.map((q, idx) => {
+                const { quizName, folderPath } = getQuestionLocation(q.id);
+                // ✅ 确保 content 是字符串，slice 也是字符串
+                const contentPreview = (q.content || '').slice(0, 50);
+                return (
+                  <div key={q.id} className="border border-gray-200 rounded p-3">
+                    <p className="text-sm font-medium">
+                      {idx + 1}. <MarkdownInline>{contentPreview}...</MarkdownInline>
+                    </p>
+                    <div className="text-xs text-gray-500 mt-1 space-x-2">
+                      <span>📚 {quizName}</span>
+                      {folderPath && <span>📁 {folderPath}</span>}
+                    </div>
+                    <div className="text-xs mt-1">
+                      <span className="text-green-600">
+                        {/* ✅ 这里必须用 .join(', ') 转为字符串 */}
+                        正确答案：{q.correctAnswers.map((i) => String.fromCharCode(65 + i)).join(', ')}
+                      </span>
+                      {q.analysis && (
+                        <span className="ml-2 text-blue-500">
+                          （解析：{(q.analysis || '').slice(0, 60)}...）
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+
         <button
           onClick={() => useAppStore.setState({ currentPractice: null })}
           className="mt-6 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -133,6 +209,7 @@ export default function PracticeView() {
     );
   }
 
+  // 练习进行中
   const getOptionStyle = (origIdx: number) => {
     const isSelected = currentAnswer?.selectedAnswers.includes(origIdx);
     if (!currentSubmission?.submitted) {
@@ -154,17 +231,6 @@ export default function PracticeView() {
     currentQ.originalIndex != null ? currentQ.originalIndex + 1 : currentIndex + 1;
 
   const order = optionOrders[currentQ.id] ?? currentQ.options.map((_, i) => i);
-
-  // Markdown 渲染组件，将段落变为行内元素，避免换行破坏布局
-  const MarkdownInline = ({ children }: { children: string }) => (
-    <ReactMarkdown
-      remarkPlugins={[remarkMath]}
-      rehypePlugins={[rehypeKatex]}
-      components={{ p: 'span' }}
-    >
-      {children}
-    </ReactMarkdown>
-  );
 
   return (
     <div className="flex flex-col h-full p-4 sm:p-6">
@@ -222,7 +288,7 @@ export default function PracticeView() {
 
         <div className="space-y-2 ml-4">
           {order.map((origIdx, displayIdx) => {
-            const opt = currentQ.options[origIdx];
+            const opt = currentQ.options[origIdx] || '';
             return (
               <label
                 key={origIdx}

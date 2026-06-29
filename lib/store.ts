@@ -1,11 +1,13 @@
+// lib/store.ts
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Folder, Quiz, Question, QuestionType, PracticeConfig, PracticeSession } from './types';
+import type { Folder, Quiz, Question, QuestionType, PracticeConfig, PracticeSession, PracticeRecord } from './types';
 
 interface AppState {
   folders: Folder[];
   quizzes: Quiz[];
   questions: Question[];
+  practiceHistory: PracticeRecord[];  // ✅ 新增
 
   activeView: { quizId: string | null; mode: 'manager' | 'practice' } | null;
   setActiveView: (quizId: string, mode: 'manager' | 'practice') => void;
@@ -15,6 +17,7 @@ interface AppState {
   deleteFolder: (id: string) => void;
   renameFolder: (id: string, name: string) => void;
   ensureFolderPath: (path: string) => string;
+  getFolderPath: (folderId: string) => string;  // ✅ 新增：获取文件夹完整路径
 
   addQuiz: (name: string, folderId: string) => void;
   deleteQuiz: (id: string) => void;
@@ -41,6 +44,7 @@ export const useAppStore = create<AppState>()(
       folders: [],
       quizzes: [],
       questions: [],
+      practiceHistory: [],  // ✅ 初始化
       activeView: null,
       currentPractice: null,
 
@@ -73,6 +77,20 @@ export const useAppStore = create<AppState>()(
           currentParentId = existing.id;
         }
         return currentParentId!;
+      },
+
+      // ✅ 获取文件夹完整路径（用“ / ”分隔）
+      getFolderPath: (folderId: string) => {
+        const state = get();
+        const pathParts: string[] = [];
+        let currentId: string | null = folderId;
+        while (currentId) {
+          const folder = state.folders.find((f) => f.id === currentId);
+          if (!folder) break;
+          pathParts.unshift(folder.name);
+          currentId = folder.parentId;
+        }
+        return pathParts.join(' / ');
       },
 
       deleteFolder: (id) => {
@@ -211,45 +229,38 @@ export const useAppStore = create<AppState>()(
 
       // ✅ 练习方法
       startPractice: (config) => {
-  const state = get();
-  const allQuestions: (Question & { originalIndex: number })[] = [];
-
-  // 遍历每个选中题库，按 quiz.questionIds 顺序收集题目并附加原始索引
-  config.quizIds.forEach((qid) => {
-    const quiz = state.quizzes.find((q) => q.id === qid);
-    if (!quiz) return;
-    quiz.questionIds.forEach((questionId, idx) => {
-      const q = state.questions.find((q) => q.id === questionId);
-      if (q && !allQuestions.some((existing) => existing.id === q.id)) {
-        allQuestions.push({ ...q, originalIndex: idx });
-      }
-    });
-  });
-
-  if (allQuestions.length === 0) {
-    alert('所选题库中没有题目');
-    return;
-  }
-
-  let questions = [...allQuestions];
-
-  if (config.shuffle) {
-    for (let i = questions.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [questions[i], questions[j]] = [questions[j], questions[i]];
-    }
-  }
-  // 非乱序时 questions 已经是按题库、原始顺序排列，无需再处理
-
-  const session: PracticeSession = {
-    config,
-    questions,
-    currentIndex: 0,
-    answers: questions.map((q) => ({ questionId: q.id, selectedAnswers: [] })),
-    startTime: Date.now(),
-  };
-  set({ currentPractice: session });
-},
+        const state = get();
+        const allQuestions: (Question & { originalIndex: number })[] = [];
+        config.quizIds.forEach((qid) => {
+          const quiz = state.quizzes.find((q) => q.id === qid);
+          if (!quiz) return;
+          quiz.questionIds.forEach((questionId, idx) => {
+            const q = state.questions.find((q) => q.id === questionId);
+            if (q && !allQuestions.some((existing) => existing.id === q.id)) {
+              allQuestions.push({ ...q, originalIndex: idx });
+            }
+          });
+        });
+        if (allQuestions.length === 0) {
+          alert('所选题库中没有题目');
+          return;
+        }
+        let questions = [...allQuestions];
+        if (config.shuffle) {
+          for (let i = questions.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [questions[i], questions[j]] = [questions[j], questions[i]];
+          }
+        }
+        const session: PracticeSession = {
+          config,
+          questions,
+          currentIndex: 0,
+          answers: questions.map((q) => ({ questionId: q.id, selectedAnswers: [] })),
+          startTime: Date.now(),
+        };
+        set({ currentPractice: session });
+      },
 
       endPractice: () => {
         set((s) => {
@@ -261,7 +272,26 @@ export const useAppStore = create<AppState>()(
             const correct = arraysEqual(ans.selectedAnswers.slice().sort(), question.correctAnswers.slice().sort());
             return { ...ans, isCorrect: correct };
           });
-          return { currentPractice: { ...session, answers, endTime: Date.now() } };
+          const endTime = Date.now();
+          const timeSpent = Math.floor((endTime - session.startTime) / 1000);
+          const answeredQuestions = answers.filter((a) => a.isCorrect !== undefined).length;
+          const correctCount = answers.filter((a) => a.isCorrect).length;
+
+          // ✅ 生成练习记录
+          const record: PracticeRecord = {
+            id: `rec-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
+            date: new Date().toISOString(),
+            quizIds: session.config.quizIds,
+            totalQuestions: session.questions.length,
+            answeredQuestions,
+            correctCount,
+            timeSpent,
+          };
+
+          return {
+            currentPractice: { ...session, answers, endTime },
+            practiceHistory: [...s.practiceHistory, record],
+          };
         });
       },
 
@@ -304,7 +334,7 @@ export const useAppStore = create<AppState>()(
         folders: state.folders,
         quizzes: state.quizzes,
         questions: state.questions,
-        // 练习状态不持久化
+        practiceHistory: state.practiceHistory, // ✅ 持久化练习记录
       }),
       merge: (persistedState: any, currentState: AppState): AppState => {
         const rawQuestions: Question[] = persistedState?.questions || [];
@@ -333,14 +363,14 @@ export const useAppStore = create<AppState>()(
           ...persistedState,
           questions: uniqueQuestions,
           quizzes: fixedQuizzes,
-          currentPractice: null, // 确保不保留上次练习状态
+          practiceHistory: persistedState?.practiceHistory || [], // ✅ 恢复记录
+          currentPractice: null,
         } as AppState;
       },
     }
   )
 );
 
-// 辅助函数
 function arraysEqual(a: number[], b: number[]) {
   if (a.length !== b.length) return false;
   for (let i = 0; i < a.length; i++) {

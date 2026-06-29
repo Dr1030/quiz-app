@@ -1,0 +1,735 @@
+// lib/types.ts
+
+export type QuestionType = 'single' | 'multiple';
+
+export interface Folder {
+  id: string;
+  name: string;
+  parentId: string | null;
+}
+
+export interface Quiz {
+  id: string;
+  name: string;
+  folderId: string;
+  questionIds: string[];
+}
+
+export interface Question {
+  id: string;
+  quizId: string;
+  content: string;
+  options: string[];
+  correctAnswers: number[];
+  type: QuestionType;
+  analysis?: string;
+  originalIndex?: number;
+}
+
+// ✅ 新增：练习配置
+export interface PracticeConfig {
+  quizIds: string[];          // 选择的题库 ID 列表
+  shuffle: boolean;           // 是否随机顺序
+}
+
+// ✅ 新增：单题作答记录
+export interface AnswerRecord {
+  questionId: string;
+  selectedAnswers: number[];  // 用户选择的选项下标
+  isCorrect?: boolean;        // 交卷后整体判断，或实时判断？我们设计为交卷后统计
+}
+
+// ✅ 新增：练习会话
+export interface PracticeSession {
+  config: PracticeConfig;
+  questions: Question[];      // 本次练习的所有题目（已排序或乱序）
+  currentIndex: number;       // 当前题目索引
+  answers: AnswerRecord[];    // 用户答案
+  startTime: number;          // 开始时间戳
+  endTime?: number;           // 结束时间戳（交卷时设置）
+} 
+--- store.ts --- 
+import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
+import type { Folder, Quiz, Question, QuestionType, PracticeConfig, PracticeSession } from './types';
+
+interface AppState {
+  folders: Folder[];
+  quizzes: Quiz[];
+  questions: Question[];
+
+  activeView: { quizId: string | null; mode: 'manager' | 'practice' } | null;
+  setActiveView: (quizId: string, mode: 'manager' | 'practice') => void;
+  clearActiveView: () => void;
+
+  addFolder: (name: string, parentId: string | null) => void;
+  deleteFolder: (id: string) => void;
+  renameFolder: (id: string, name: string) => void;
+  ensureFolderPath: (path: string) => string;
+
+  addQuiz: (name: string, folderId: string) => void;
+  deleteQuiz: (id: string) => void;
+  renameQuiz: (id: string, name: string) => void;
+
+  addQuestion: (question: Omit<Question, 'id'>) => void;
+  deleteQuestion: (id: string) => void;
+  updateQuestion: (id: string, updates: Partial<Omit<Question, 'id'>>) => void;
+  importFromText: (text: string) => void;
+
+  // 练习相关
+  currentPractice: PracticeSession | null;
+  startPractice: (config: PracticeConfig) => void;
+  endPractice: () => void;
+  submitAnswer: (questionId: string, selectedAnswers: number[]) => void;
+  goToQuestion: (index: number) => void;
+  nextQuestion: () => void;
+  prevQuestion: () => void;
+}
+
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      folders: [],
+      quizzes: [],
+      questions: [],
+      activeView: null,
+      currentPractice: null,
+
+      setActiveView: (quizId, mode) => set({ activeView: { quizId, mode } }),
+      clearActiveView: () => set({ activeView: null }),
+
+      addFolder: (name, parentId) =>
+        set((s) => ({
+          folders: [...s.folders, { id: `folder-${Date.now()}-${Math.random().toString(36).substr(2,5)}`, name, parentId }],
+        })),
+
+      renameFolder: (id, name) =>
+        set((s) => ({ folders: s.folders.map((f) => (f.id === id ? { ...f, name } : f)) })),
+
+      ensureFolderPath: (path) => {
+        const parts = path.split('/').map((p) => p.trim()).filter(Boolean);
+        let currentParentId: string | null = null;
+        for (const part of parts) {
+          const state = get();
+          let existing = state.folders.find((f) => f.name === part && f.parentId === currentParentId);
+          if (!existing) {
+            const newFolder: Folder = {
+              id: `folder-${Date.now()}-${Math.random().toString(36).substr(2,5)}`,
+              name: part,
+              parentId: currentParentId,
+            };
+            set((s) => ({ folders: [...s.folders, newFolder] }));
+            existing = newFolder;
+          }
+          currentParentId = existing.id;
+        }
+        return currentParentId!;
+      },
+
+      deleteFolder: (id) => {
+        const state = get();
+        const folderIdsToDelete = new Set<string>();
+        const collect = (pid: string) => {
+          folderIdsToDelete.add(pid);
+          state.folders.filter((f) => f.parentId === pid).forEach((f) => collect(f.id));
+        };
+        collect(id);
+        const quizIds = state.quizzes.filter((q) => folderIdsToDelete.has(q.folderId)).map((q) => q.id);
+        set((s) => ({
+          folders: s.folders.filter((f) => !folderIdsToDelete.has(f.id)),
+          quizzes: s.quizzes.filter((q) => !folderIdsToDelete.has(q.folderId)),
+          questions: s.questions.filter((q) => !quizIds.includes(q.quizId)),
+        }));
+      },
+
+      addQuiz: (name, folderId) =>
+        set((s) => ({
+          quizzes: [...s.quizzes, { id: `quiz-${Date.now()}`, name, folderId, questionIds: [] }],
+        })),
+
+      renameQuiz: (id, name) =>
+        set((s) => ({ quizzes: s.quizzes.map((q) => (q.id === id ? { ...q, name } : q)) })),
+
+      deleteQuiz: (id) =>
+        set((s) => ({
+          quizzes: s.quizzes.filter((q) => q.id !== id),
+          questions: s.questions.filter((q) => q.quizId !== id),
+        })),
+
+      addQuestion: (question) => {
+        const newId = `q-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        set((s) => ({
+          questions: [...s.questions, { ...question, id: newId }],
+          quizzes: s.quizzes.map((q) =>
+            q.id === question.quizId ? { ...q, questionIds: [...q.questionIds, newId] } : q
+          ),
+        }));
+      },
+
+      updateQuestion: (id, updates) =>
+        set((s) => ({
+          questions: s.questions.map((q) => (q.id === id ? { ...q, ...updates } : q)),
+        })),
+
+      deleteQuestion: (id) => {
+        const state = get();
+        const target = state.questions.find((q) => q.id === id);
+        if (!target) return;
+        set((s) => ({
+          questions: s.questions.filter((q) => q.id !== id),
+          quizzes: s.quizzes.map((q) =>
+            q.id === target.quizId
+              ? { ...q, questionIds: (q.questionIds ?? []).filter((qid) => qid !== id) }
+              : q
+          ),
+        }));
+      },
+
+      importFromText: (text) => {
+        const lines = text.split('\n');
+        let currentCategoryPath: string | null = null;
+        let currentQuizName: string | null = null;
+        let currentQuizId: string | null = null;
+        let tempContent = '',
+          tempOptions: string[] = [],
+          tempAnswer: number[] = [],
+          tempAnalysis = '';
+
+        const save = () => {
+          if (tempContent && currentQuizId) {
+            get().addQuestion({
+              quizId: currentQuizId,
+              content: tempContent.trim(),
+              options: tempOptions,
+              correctAnswers: tempAnswer,
+              type: tempAnswer.length > 1 ? 'multiple' : 'single',
+              analysis: tempAnalysis.trim() || undefined,
+            });
+          }
+          tempContent = '';
+          tempOptions = [];
+          tempAnswer = [];
+          tempAnalysis = '';
+        };
+
+        for (const line of lines) {
+          const t = line.trim();
+          if (!t) continue;
+          if (t.startsWith('[分类]')) {
+            save();
+            currentCategoryPath = t.replace('[分类]', '').trim();
+            currentQuizName = null;
+            currentQuizId = null;
+            continue;
+          }
+          if (t.startsWith('[题库]')) {
+            save();
+            currentQuizName = t.replace('[题库]', '').trim();
+            const folderId = currentCategoryPath
+              ? get().ensureFolderPath(currentCategoryPath)
+              : get().ensureFolderPath('未分类题库');
+            const state = get();
+            let quiz = state.quizzes.find((q) => q.name === currentQuizName && q.folderId === folderId);
+            if (!quiz) {
+              get().addQuiz(currentQuizName!, folderId);
+              quiz = get().quizzes.find((q) => q.name === currentQuizName && q.folderId === folderId)!;
+            }
+            currentQuizId = quiz.id;
+            continue;
+          }
+          if (t.startsWith('[题目]')) {
+            save();
+            tempContent = t.replace('[题目]', '').trim();
+            continue;
+          }
+          const optMatch = t.match(/^\[([A-Z])\]\s*(.*)$/i);
+          if (optMatch) {
+            tempOptions.push(optMatch[2]);
+            continue;
+          }
+          if (t.startsWith('[答案]')) {
+            const ans = t.replace('[答案]', '').trim();
+            tempAnswer = ans.replace(/,/g, '').split('').map((c) => c.toUpperCase().charCodeAt(0) - 65);
+            continue;
+          }
+          if (t.startsWith('[解析]')) {
+            tempAnalysis = t.replace('[解析]', '').trim();
+            continue;
+          }
+        }
+        save();
+      },
+
+      // ✅ 练习方法
+      startPractice: (config) => {
+  const state = get();
+  const allQuestions: (Question & { originalIndex: number })[] = [];
+
+  // 遍历每个选中题库，按 quiz.questionIds 顺序收集题目并附加原始索引
+  config.quizIds.forEach((qid) => {
+    const quiz = state.quizzes.find((q) => q.id === qid);
+    if (!quiz) return;
+    quiz.questionIds.forEach((questionId, idx) => {
+      const q = state.questions.find((q) => q.id === questionId);
+      if (q && !allQuestions.some((existing) => existing.id === q.id)) {
+        allQuestions.push({ ...q, originalIndex: idx });
+      }
+    });
+  });
+
+  if (allQuestions.length === 0) {
+    alert('所选题库中没有题目');
+    return;
+  }
+
+  let questions = [...allQuestions];
+
+  if (config.shuffle) {
+    for (let i = questions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [questions[i], questions[j]] = [questions[j], questions[i]];
+    }
+  }
+  // 非乱序时 questions 已经是按题库、原始顺序排列，无需再处理
+
+  const session: PracticeSession = {
+    config,
+    questions,
+    currentIndex: 0,
+    answers: questions.map((q) => ({ questionId: q.id, selectedAnswers: [] })),
+    startTime: Date.now(),
+  };
+  set({ currentPractice: session });
+},
+
+      endPractice: () => {
+        set((s) => {
+          if (!s.currentPractice) return s;
+          const session = s.currentPractice;
+          const answers = session.answers.map((ans) => {
+            const question = session.questions.find((q) => q.id === ans.questionId);
+            if (!question) return ans;
+            const correct = arraysEqual(ans.selectedAnswers.slice().sort(), question.correctAnswers.slice().sort());
+            return { ...ans, isCorrect: correct };
+          });
+          return { currentPractice: { ...session, answers, endTime: Date.now() } };
+        });
+      },
+
+      submitAnswer: (questionId, selectedAnswers) => {
+        set((s) => {
+          if (!s.currentPractice) return s;
+          const answers = s.currentPractice.answers.map((a) =>
+            a.questionId === questionId ? { ...a, selectedAnswers } : a
+          );
+          return { currentPractice: { ...s.currentPractice, answers } };
+        });
+      },
+
+      goToQuestion: (index) =>
+        set((s) => {
+          if (!s.currentPractice) return s;
+          if (index < 0 || index >= s.currentPractice.questions.length) return s;
+          return { currentPractice: { ...s.currentPractice, currentIndex: index } };
+        }),
+
+      nextQuestion: () =>
+        set((s) => {
+          if (!s.currentPractice) return s;
+          const next = s.currentPractice.currentIndex + 1;
+          if (next >= s.currentPractice.questions.length) return s;
+          return { currentPractice: { ...s.currentPractice, currentIndex: next } };
+        }),
+
+      prevQuestion: () =>
+        set((s) => {
+          if (!s.currentPractice) return s;
+          const prev = s.currentPractice.currentIndex - 1;
+          if (prev < 0) return s;
+          return { currentPractice: { ...s.currentPractice, currentIndex: prev } };
+        }),
+    }),
+    {
+      name: 'quiz-app-store',
+      partialize: (state) => ({
+        folders: state.folders,
+        quizzes: state.quizzes,
+        questions: state.questions,
+        // 练习状态不持久化
+      }),
+      merge: (persistedState: any, currentState: AppState): AppState => {
+        const rawQuestions: Question[] = persistedState?.questions || [];
+        const seen = new Set<string>();
+        const uniqueQuestions = rawQuestions
+          .filter((q: Question) => {
+            if (seen.has(q.id)) return false;
+            seen.add(q.id);
+            return true;
+          })
+          .map((q: Question) => {
+            if (!q.id.includes('-', 2)) {
+              return { ...q, id: `q-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` };
+            }
+            return q;
+          });
+
+        const validQuestionIds = new Set(uniqueQuestions.map((q: Question) => q.id));
+        const fixedQuizzes = (persistedState?.quizzes || []).map((quiz: Quiz) => ({
+          ...quiz,
+          questionIds: (quiz.questionIds || []).filter((qid: string) => validQuestionIds.has(qid)),
+        }));
+
+        return {
+          ...currentState,
+          ...persistedState,
+          questions: uniqueQuestions,
+          quizzes: fixedQuizzes,
+          currentPractice: null, // 确保不保留上次练习状态
+        } as AppState;
+      },
+    }
+  )
+);
+
+// 辅助函数
+function arraysEqual(a: number[], b: number[]) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+} 
+--- importHelper.ts --- 
+// lib/importHelper.ts
+import { useAppStore } from './store';
+
+export function handleImportQuestions(text: string) {
+  if (!text || !text.trim()) {
+    alert('❌ 文本为空，无法导入');
+    return;
+  }
+  try {
+    useAppStore.getState().importFromText(text);
+    alert('✅ 导入成功！');
+  } catch (error) {
+    console.error('导入失败:', error);
+    alert('❌ 导入错误，请检查文本格式');
+  }
+} 
+--- parser.ts --- 
+// lib/parser.ts
+
+export interface ParsedQuestion {
+  question: string;
+  options: Record<string, string>; // 例如: { "A": "处理副作用", "B": "管理组件状态" }
+  correctOptions: string[];        // 例如: ["B"] 或 ["A", "C"]
+  explanation: string;
+  categoryPath?: string;           // 解析出的文件夹路径，例如 "前端/React基础"
+}
+
+/**
+ * 将固定格式的文本解析为结构化对象
+ */
+export function parseQuestionText(text: string): ParsedQuestion | null {
+  try {
+    // 1. 初始化结果对象
+    const result: ParsedQuestion = {
+      question: '',
+      options: {},
+      correctOptions: [],
+      explanation: '',
+      categoryPath: undefined,
+    };
+
+    // 2. 按行分割文本，并去除首尾空白
+    const lines = text.split('\n').map((line) => line.trim());
+
+    // 3. 定义正则表达式 (不区分大小写 /i)
+    const regex = {
+      question: /^\[题目\]\s*(.+)/i,
+      option: /^\[([A-Z])\]\s*(.+)/i, // 匹配 [A], [B] 等
+      answer: /^\[答案\]\s*(.+)/i,
+      analysis: /^\[解析\]\s*(.+)/i,
+      category: /^\[分类\]\s*(.+)/i,
+    };
+
+    let currentOptionKey = '';
+
+    // 4. 遍历每一行进行匹配
+    for (const line of lines) {
+      if (!line) continue; // 跳过空行
+
+      // 匹配题目
+      const qMatch = line.match(regex.question);
+      if (qMatch) {
+        result.question = qMatch[1];
+        continue;
+      }
+
+      // 匹配选项
+      const oMatch = line.match(regex.option);
+      if (oMatch) {
+        const key = oMatch[1].toUpperCase();
+        const value = oMatch[2];
+        result.options[key] = value;
+        currentOptionKey = key; // 记录当前正在处理的选项键，以备后续可能的多行选项（虽然目前格式是一行一个）
+        continue;
+      }
+
+      // 匹配答案
+      const aMatch = line.match(regex.answer);
+      if (aMatch) {
+        // 处理多选情况：支持 "AB", "A,B", "A, B" 等格式
+        const rawAnswer = aMatch[1];
+        // 移除逗号、空格，然后拆分为字符数组
+        result.correctOptions = rawAnswer
+          .replace(/[,，\s]/g, '') // 全局替换中英文逗号和空格
+          .split('')
+          .filter((char) => /[A-Z]/i.test(char)) // 只保留字母
+          .map((char) => char.toUpperCase());
+        continue;
+      }
+
+      // 匹配解析
+      const eMatch = line.match(regex.analysis);
+      if (eMatch) {
+        result.explanation = eMatch[1];
+        continue;
+      }
+
+      // 匹配分类/文件夹路径
+      const cMatch = line.match(regex.category);
+      if (cMatch) {
+        result.categoryPath = cMatch[1];
+        continue;
+      }
+    }
+
+    // 5. 校验：如果没有题目内容，视为解析失败
+    if (!result.question) {
+      return null;
+    }
+
+    return result;
+  } catch (error) {
+    console.error('解析题目出错:', error);
+    return null;
+  }
+} 
+--- ImportModal.tsx --- 
+// components/ImportModal.tsx
+"use client";
+
+import { useState } from "react";
+import { handleImportQuestions } from "@/lib/importHelper";
+
+interface ImportModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+}
+
+// 格式示例文本（数分题库，包含单选与多选，支持 LaTeX 公式）
+const SAMPLE_TEXT = `[分类] 数学分析 / 极限与连续性
+[题库] Quiz-1
+
+[题目] 设函数 $f(x)=\\frac{x^2-1}{x-1}$，则 $\\lim_{x\\to 1} f(x)$ 等于？
+[A] $0$
+[B] $1$
+[C] $2$
+[D] 不存在
+[答案] C
+[解析] 当 $x\\neq 1$ 时，$f(x)=x+1$，故 $\\lim_{x\\to 1}f(x)=2$。
+
+[题目] 以下哪些条件可以保证函数 $f$ 在点 $x_0$ 处连续？（多选）
+[A] $\\lim_{x\\to x_0} f(x)$ 存在
+[B] $\\lim_{x\\to x_0} f(x) = f(x_0)$
+[C] $f$ 在 $x_0$ 处可导
+[D] $\\lim_{x\\to x_0^+} f(x) = \\lim_{x\\to x_0^-} f(x)$
+[答案] BC
+[解析] 连续性定义要求极限存在且等于函数值，故 B 正确。可导必连续，故 C 正确。A 仅要求极限存在，未要求等于函数值；D 左右极限相等但可能不等于函数值，均不充分。`;
+
+export default function ImportModal({ isOpen, onClose }: ImportModalProps) {
+  const [text, setText] = useState("");
+
+  if (!isOpen) return null;
+
+  const handleConfirm = () => {
+    if (!text.trim()) {
+      alert("⚠️ 请先粘贴题目文本！");
+      return;
+    }
+
+    try {
+      handleImportQuestions(text);
+      setText("");
+      onClose();
+      alert("✅ 导入完成！请检查列表。");
+    } catch (error) {
+      console.error(error);
+      alert("❌ 发生未知错误，请查看控制台。");
+    }
+  };
+
+  const handleUseSample = () => {
+    setText(SAMPLE_TEXT);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-2xl rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800 max-h-[90vh] flex flex-col">
+        <h2 className="mb-4 text-xl font-bold text-gray-900 dark:text-white">
+          批量导入题目
+        </h2>
+
+        {/* 格式示例区域（可选中复制） */}
+        <div className="mb-3">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+              📋 格式参考（支持 $LaTeX$ 公式，点击按钮可填入下方输入框）
+            </span>
+            <button
+              onClick={handleUseSample}
+              className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 dark:bg-blue-900 dark:text-blue-300"
+            >
+              使用示例
+            </button>
+          </div>
+          <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto max-h-32 text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300 select-all whitespace-pre-wrap">
+            {SAMPLE_TEXT}
+          </pre>
+        </div>
+
+        {/* 输入区域 */}
+        <textarea
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          placeholder="在此粘贴题目文本，支持 $LaTeX$ 数学公式..."
+          className="mb-4 flex-1 min-h-[200px] w-full rounded border border-gray-300 p-3 text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+        />
+
+        {/* 按钮组 */}
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="rounded px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleConfirm}
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            确认导入
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+} 
+--- page.tsx --- 
+// app/page.tsx
+'use client';
+
+import { useState } from 'react';
+import FolderTree from '@/components/FolderTree';
+import QuestionList from '@/components/QuestionList';
+import PracticeView from '@/components/PracticeView';
+import ImportModal from '@/components/ImportModal';
+import { useAppStore } from '@/lib/store';
+
+export default function Home() {
+  const [selectedQuizId, setSelectedQuizId] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const currentPractice = useAppStore((s) => s.currentPractice);
+
+  // 侧边栏抽屉状态
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  return (
+    <div className="flex h-screen">
+      {/* 侧边栏抽屉 */}
+      <FolderTree
+        selectedId={selectedQuizId}
+        onSelect={setSelectedQuizId}
+        open={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+      />
+
+      <main className="flex-1 overflow-hidden flex flex-col">
+        {/* 非练习时显示标题栏，包含汉堡按钮和批量导入 */}
+        {!currentPractice && (
+          <div className="flex items-center justify-between px-4 py-2 border-b-2 border-gray-300 bg-white">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="p-2 rounded-md hover:bg-gray-100"
+                title="打开题库目录"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                </svg>
+              </button>
+              <h1 className="text-lg font-semibold">题目管理</h1>
+            </div>
+            <button
+              onClick={() => setImportOpen(true)}
+              className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
+            >
+              📥 批量导入
+            </button>
+          </div>
+        )}
+
+        {/* 内容区：练习界面或题库管理 */}
+        <div className="flex-1 overflow-auto">
+          {currentPractice ? (
+            <PracticeView />
+          ) : (
+            <QuestionList quizId={selectedQuizId} />
+          )}
+        </div>
+      </main>
+
+      {/* 导入弹窗 */}
+      <ImportModal
+        isOpen={importOpen}
+        onClose={() => setImportOpen(false)}
+      />
+    </div>
+  );
+} 
+--- layout.tsx --- 
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import 'katex/dist/katex.min.css'; // ✅ 引入 KaTeX 样式
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "刷题应用",
+  description: "个人刷题管理与练习工具",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="zh-CN"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}

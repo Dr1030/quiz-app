@@ -4,7 +4,11 @@
 import { useState } from 'react';
 import { useAppStore } from '@/lib/store';
 
-export default function AddFolderButton() {
+interface AddFolderButtonProps {
+  parentId?: string | null; // ✅ 支持根级(null) 或 子文件夹(parentId)
+}
+
+export default function AddFolderButton({ parentId = null }: AddFolderButtonProps) {
   const [name, setName] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const addFolder = useAppStore((state) => state.addFolder);
@@ -12,7 +16,7 @@ export default function AddFolderButton() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    addFolder(name.trim(), null);
+    addFolder(name.trim(), parentId); // 使用传入的 parentId
     setName('');
     setIsAdding(false);
   };
